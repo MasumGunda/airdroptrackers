@@ -619,6 +619,7 @@
         let isAuthorized = false;
         let editIndex = -1;
         const SECRET_KEY = '852096@Rishu'; // Your secret key
+        let lastLoadTime = 0;
 
         function togglePassword() {
             const passwordInput = document.getElementById('authKey');
@@ -632,10 +633,11 @@
             }
         }
 
-        function showAuthModal() {
+        function showAuthModal(action) {
             document.getElementById('authModal').style.display = 'flex';
             document.getElementById('authKey').value = '';
             document.getElementById('authFeedback').style.display = 'none';
+            window.currentAction = action; // Store the action to proceed after auth
         }
 
         function authenticate() {
@@ -644,11 +646,13 @@
             if (inputKey === SECRET_KEY) {
                 isAuthorized = true;
                 document.getElementById('authModal').style.display = 'none';
-                document.getElementById('addModal').style.display = 'flex';
                 feedback.style.display = 'block';
                 feedback.textContent = 'Authentication successful!';
                 feedback.className = 'auth-feedback';
-                resetForm();
+                if (window.currentAction) {
+                    window.currentAction();
+                    delete window.currentAction; // Clear action after execution
+                }
             } else {
                 feedback.style.display = 'block';
                 feedback.textContent = 'Incorrect key! Please try again.';
@@ -664,6 +668,10 @@
         }
 
         async function loadProjects() {
+            const now = Date.now();
+            if (now - lastLoadTime < 1000) return; // Debounce to prevent multiple rapid calls
+            lastLoadTime = now;
+
             try {
                 const response = await fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vQQiUVzkIpKs1u5-ZwXJsmi1apJvRaX97cP8sI1AFGmG7R9ga2hESKWnaBDsOuCeXOM09HARizfNjTv/pub?output=csv');
                 const csvText = await response.text();
@@ -689,7 +697,7 @@
                 const headers = rows[0].map(header => header.replace(/^"|"$/g, '').trim());
                 console.log('Headers:', headers);
 
-                const dataRows = rows.slice(1);
+                const dataRows = rows.slice(1).filter(row => row.some(cell => cell.trim())); // Remove empty rows
                 console.log('Data rows:', dataRows);
 
                 projects = dataRows.map(row => {
@@ -770,8 +778,8 @@
                     <td>${project.faucet || '-'}</td>
                     <td>${project.comments || '-'}</td>
                     <td>
-                        <span class="action-btn" onclick="editProject(${index})">✏️</span>
-                        <span class="action-btn" onclick="deleteProject(${index})">🗑️</span>
+                        <span class="action-btn" onclick="showAuthModal(() => editProject(${index}))">✏️</span>
+                        <span class="action-btn" onclick="showAuthModal(() => deleteProject(${index}))">🗑️</span>
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -888,10 +896,7 @@
         });
 
         function editProject(index) {
-            if (!isAuthorized) {
-                showAuthModal();
-                return;
-            }
+            if (!isAuthorized) return; // Auth already handled by showAuthModal
             editIndex = index;
             const project = projects[index];
             document.getElementById('addModal').style.display = 'flex';
@@ -910,6 +915,7 @@
         }
 
         function deleteProject(index) {
+            if (!isAuthorized) return; // Auth already handled by showAuthModal
             projects.splice(index, 1);
             renderTable();
             const url = 'https://script.google.com/macros/s/AKfycbx0bEvA17UgZIgKIYjrIextrwcmfY3sGiwiD-EDXsXXAj8wr1pqPlW5QyO0lwA5THW06Q/exec';
@@ -988,6 +994,10 @@
                 }, timeToReset);
             }
         }
+
+        document.getElementById('addBtn').addEventListener('click', () => showAuthModal(() => {
+            if (isAuthorized) document.getElementById('addModal').style.display = 'flex';
+        }));
 
         loadProjects();
         checkReset();
